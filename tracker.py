@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 import ccxt.pro as ccxt
-import psycopg2
+import asyncpg
 import os
 from dotenv import load_dotenv
 
@@ -11,10 +11,10 @@ load_dotenv()
 # Database Connection using Neon
 DB_URL = os.getenv("DB_URL")
 
-def init_db(conn):
+async def init_db(pool):
     """Creates the metrics table if it doesn't exist yet"""
-    with conn.cursor() as cursor:
-        cursor.execute("""
+    async with pool.acquire() as conn:
+        await conn.execute("""
             CREATE TABLE IF NOT EXISTS order_book_metrics (
                 id SERIAL PRIMARY KEY,
                 timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -27,9 +27,8 @@ def init_db(conn):
                 imbalance NUMERIC(8, 4) NOT NULL
                 );
         """)
-        conn.commit()
 
-async def watch_and_store(exchange, symbol, conn):
+async def watch_and_store(exchange, symbol, pool):
     """Listens to the WebSocket Stream from coinbase for a symbol"""
     try:
         while True:
@@ -60,15 +59,13 @@ async def watch_and_store(exchange, symbol, conn):
             total_depth_vol = sum_bid_vol + sum_ask_vol
             imbalance = (sum_bid_vol - sum_ask_vol) / total_depth_vol if total_depth_vol > 0 else 0
 
-            # Write to database (Synchronous)
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    INSERT INTO order_book_metrics (symbol, best_bid, best_ask, spread, mid_price, micro_price, imbalance)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s);
-                """, (symbol, best_bid_price, best_ask_price, spread, mid_price, micro_price, imbalance))
-                conn.commit()
+            # Write to database (Asynchronous)
+            await pool.execute("""
+                INSERT INTO order_book_metrics (symbol, best_bid, best_ask, spread, mid_price, micro_price, imbalance)
+                VALUES ($1, $2, $3, $4, $5, $6, $7);
+            """, symbol, best_bid_price, best_ask_price, spread, mid_price, micro_price, imbalance)
 
-            # Terminal feedback with new metrics
+            # Terminal feedback
             time_str = datetime.now().strftime('%H:%M:%S.%f')[:-3]
             print(f"[{time_str}] {symbol} | Spread: {spread:.2f} | Mid: {mid_price:.2f} | Micro: {micro_price:.2f} | OBI: {imbalance:+.3f}")
 
@@ -81,20 +78,20 @@ async def main_loop():
     symbols = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'AVAX/USD']
 
     print("Connecting to PostgreSQL...")
-    conn = psycopg2.connect(DB_URL)
-    init_db(conn)
+    pool = await asyncpg.create_pool(DB_URL)
+    await init_db(pool)
     print("Database table ready")
 
     print(f"Opening WebSocket streams for {len(symbols)} assets...")
     try:
-        tasks = [watch_and_store(exchange, symbol, conn) for symbol in symbols]
+        tasks = [watch_and_store(exchange, symbol, pool) for symbol in symbols]
         await asyncio.gather(*tasks)
 
     except asyncio.CancelledError:
         print("\nStopping listeners...")
     finally:
         await exchange.close()
-        conn.close()
+        await pool.close()
         print("Connections closed.")
 
 if __name__ == "__main__":
