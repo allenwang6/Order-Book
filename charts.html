@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Historical Charts | Order Book Pipeline</title>
+    <title>Historical Analytics | Order Book Pipeline</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
@@ -22,18 +22,17 @@
     </script>
 </head>
 <body class="bg-darkbg text-slate-100 font-sans min-h-screen p-6">
-    <div class="max-w-6xl mx-auto space-y-6">
+    <div class="max-w-7xl mx-auto space-y-6">
         
         <!-- Header & Controls -->
         <header class="bg-cardbg rounded-xl border border-bordercolor shadow-lg overflow-hidden">
             <div class="p-6 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
                     <h1 class="text-2xl font-bold text-white tracking-wide">L2 Order Book Dashboard</h1>
-                    <p class="text-xs text-slate-400 mt-1">Real-time WebSocket Ingestion & Microstructure Metrics</p>
+                    <p class="text-xs text-slate-400 mt-1">Historical Microstructure Rollups & Volatility Analytics</p>
                 </div>
-                
                 <div class="flex items-center space-x-3">
-                    <label for="assetSelect" class="text-sm font-medium text-slate-300">Select Asset:</label>
+                    <label for="assetSelect" class="text-sm font-medium text-slate-300">Asset:</label>
                     <select id="assetSelect" onchange="fetchChartData()" class="bg-slate-900 border border-bordercolor text-slate-200 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 outline-none">
                         <option value="BTC/USD">BTC/USD</option>
                         <option value="ETH/USD">ETH/USD</option>
@@ -42,11 +41,9 @@
                     </select>
                 </div>
             </div>
-            
-            <!-- Navigation Bar -->
             <nav class="bg-slate-900/50 border-t border-bordercolor px-6 py-3 flex space-x-6 text-sm">
                 <a href="/" class="text-slate-400 hover:text-slate-200 transition-colors pb-1">Live Feed</a>
-                <a href="/charts" class="text-blue-400 font-semibold border-b-2 border-blue-400 pb-1">Historical Charts (1m Rollups)</a>
+                <a href="/charts" class="text-blue-400 font-semibold border-b-2 border-blue-400 pb-1">Historical Analytics (1m Rollups)</a>
                 <a href="https://github.com/allenwang6/Order-Book" target="_blank" class="text-slate-400 hover:text-slate-200 transition-colors pb-1 flex items-center gap-1">
                     Source Code
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
@@ -54,7 +51,7 @@
             </nav>
         </header>
 
-        <!-- 1-Hour Rolling Extremes Row -->
+        <!-- Extremes Row -->
         <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div class="bg-cardbg p-4 rounded-xl border border-bordercolor shadow-lg">
                 <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">1-Hour Max Volatility</span>
@@ -74,7 +71,7 @@
             </div>
         </section>
 
-        <!-- Chart Container -->
+        <!-- Chart -->
         <section class="bg-cardbg p-6 rounded-xl border border-bordercolor shadow-lg">
             <h2 class="text-lg font-semibold text-slate-200 mb-4">1-Minute Micro-Price vs Order Book Imbalance</h2>
             <div class="relative h-[400px] w-full">
@@ -82,7 +79,7 @@
             </div>
         </section>
 
-        <!-- Per-Minute Data Table -->
+        <!-- Table -->
         <section class="bg-cardbg rounded-xl border border-bordercolor overflow-hidden shadow-lg">
             <div class="p-4 border-b border-bordercolor">
                 <h2 class="text-base font-semibold text-slate-200">Per-Minute Microstructure Breakdown</h2>
@@ -99,9 +96,7 @@
                             <th class="px-6 py-3">Max Sell (OBI)</th>
                         </tr>
                     </thead>
-                    <tbody id="rollupsTableBody">
-                        <!-- Populated by JavaScript -->
-                    </tbody>
+                    <tbody id="rollupsTableBody"></tbody>
                 </table>
             </div>
         </section>
@@ -112,25 +107,20 @@
 
         document.addEventListener("DOMContentLoaded", () => {
             const savedAsset = localStorage.getItem('selectedAsset');
-            if (savedAsset) {
-                document.getElementById('assetSelect').value = savedAsset;
-            }
+            if (savedAsset) document.getElementById('assetSelect').value = savedAsset;
             fetchChartData();
-            setInterval(fetchChartData, 60000); 
+            setInterval(fetchChartData, 60000);
         });
 
         async function fetchChartData() {
-            const selectEl = document.getElementById('assetSelect');
-            const symbol = selectEl.value;
+            const symbol = document.getElementById('assetSelect').value;
             localStorage.setItem('selectedAsset', symbol);
 
             try {
                 const response = await fetch(`/api/metrics/historical?symbol=${encodeURIComponent(symbol)}&limit=60`);
                 const result = await response.json();
-                
                 if (!result.data || result.data.length === 0) return;
 
-                // 1. Calculate the 1-Hour Extremes for the Top Cards
                 const maxVol = Math.max(...result.data.map(r => parseFloat(r.price_volatility)));
                 const maxSpread = Math.max(...result.data.map(r => parseFloat(r.max_spread)));
                 const maxObi = Math.max(...result.data.map(r => parseFloat(r.max_imbalance)));
@@ -141,10 +131,8 @@
                 document.getElementById('statMaxObi').innerText = `+${maxObi.toFixed(3)}`;
                 document.getElementById('statMinObi').innerText = `${minObi.toFixed(3)}`;
 
-                // 2. Populate the Per-Minute Table
                 const tbody = document.getElementById('rollupsTableBody');
                 tbody.innerHTML = '';
-                
                 result.data.forEach(row => {
                     const time = new Date(row.minute_bucket).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
                     const tr = document.createElement('tr');
@@ -160,18 +148,12 @@
                     tbody.appendChild(tr);
                 });
 
-                // 3. Render the Chart (Requires reversing the data to read left-to-right)
-                const chartData = result.data.reverse();
-
-                const labels = chartData.map(row => {
-                    const d = new Date(row.minute_bucket);
-                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                });
-                const microPrices = chartData.map(row => parseFloat(row.avg_micro_price));
-                const imbalances = chartData.map(row => parseFloat(row.avg_imbalance));
-
-                renderChart(labels, microPrices, imbalances);
-
+                const chartData = [...result.data].reverse();
+                renderChart(
+                    chartData.map(row => new Date(row.minute_bucket).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
+                    chartData.map(row => parseFloat(row.avg_micro_price)),
+                    chartData.map(row => parseFloat(row.avg_imbalance))
+                );
             } catch (err) {
                 console.error("Failed to fetch historical data:", err);
             }
@@ -179,34 +161,15 @@
 
         function renderChart(labels, microPrices, imbalances) {
             const ctx = document.getElementById('historicalChart').getContext('2d');
-            
-            if (mainChart) {
-                mainChart.destroy();
-            }
+            if (mainChart) mainChart.destroy();
 
             mainChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [
-                        {
-                            label: 'Avg Micro Price ($)',
-                            data: microPrices,
-                            borderColor: '#c084fc',
-                            backgroundColor: 'rgba(192, 132, 252, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 1,
-                            yAxisID: 'y',
-                            tension: 0.2,
-                            fill: true
-                        },
-                        {
-                            label: 'Avg OBI',
-                            data: imbalances,
-                            type: 'bar',
-                            backgroundColor: imbalances.map(val => val >= 0 ? 'rgba(52, 211, 153, 0.6)' : 'rgba(251, 113, 133, 0.6)'),
-                            yAxisID: 'y1'
-                        }
+                        { label: 'Avg Micro Price ($)', data: microPrices, borderColor: '#c084fc', backgroundColor: 'rgba(192, 132, 252, 0.1)', borderWidth: 2, pointRadius: 1, yAxisID: 'y', tension: 0.2, fill: true },
+                        { label: 'Avg OBI', data: imbalances, type: 'bar', backgroundColor: imbalances.map(val => val >= 0 ? 'rgba(52, 211, 153, 0.6)' : 'rgba(251, 113, 133, 0.6)'), yAxisID: 'y1' }
                     ]
                 },
                 options: {
@@ -216,16 +179,8 @@
                     plugins: { legend: { labels: { color: '#cbd5e1' } } },
                     scales: {
                         x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-                        y: {
-                            type: 'linear', display: true, position: 'left',
-                            ticks: { color: '#c084fc' }, grid: { color: '#334155' },
-                            title: { display: true, text: 'Price ($)', color: '#94a3b8' }
-                        },
-                        y1: {
-                            type: 'linear', display: true, position: 'right',
-                            ticks: { color: '#94a3b8' }, grid: { drawOnChartArea: false },
-                            title: { display: true, text: 'Order Book Imbalance (-1 to 1)', color: '#94a3b8' }
-                        }
+                        y: { type: 'linear', display: true, position: 'left', ticks: { color: '#c084fc' }, grid: { color: '#334155' }, title: { display: true, text: 'Price ($)', color: '#94a3b8' } },
+                        y1: { type: 'linear', display: true, position: 'right', ticks: { color: '#94a3b8' }, grid: { drawOnChartArea: false }, title: { display: true, text: 'Order Book Imbalance (-1 to 1)', color: '#94a3b8' } }
                     }
                 }
             });
