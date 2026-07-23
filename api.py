@@ -30,6 +30,11 @@ async def get_db():
 async def serve_dashboard():
     return FileResponse("index.html")
 
+# Link to 1 minute rollups
+@app.get("/charts", include_in_schema=False)
+async def serve_charts():
+    return FileResponse("charts.html")
+
 @app.get("/api/assets", tags=["Metadata"])
 async def get_assets(conn: asyncpg.Connection = Depends(get_db)):
     records = await conn.fetch("SELECT * FROM assets;")
@@ -60,8 +65,10 @@ async def get_historical_metrics(
     limit: int = Query(60, le=1440, description="Number of minute-candles to fetch"),
     conn: asyncpg.Connection = Depends(get_db)
 ):
+    """Retrieves 1-minute aggregated rollups for charting and trend analysis."""
+    # CHANGED: Now using SELECT * to pull all new volatility and extreme metrics
     records = await conn.fetch("""
-        SELECT minute_bucket, avg_spread, avg_micro_price, avg_imbalance, tick_count
+        SELECT *
         FROM minute_rollups 
         WHERE symbol = $1 
         ORDER BY minute_bucket DESC 
