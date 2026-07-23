@@ -1,23 +1,19 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi.responses import FileResponse # Added import
 import asyncpg
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 DB_URL = os.getenv("DB_URL")
 
-# Manage the database connection pool lifecycle
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Create the connection pool
     app.state.pool = await asyncpg.create_pool(DB_URL)
     yield
-    # Shutdown: Close the connection pool gracefully
     await app.state.pool.close()
 
-# Initialize FastAPI application
 app = FastAPI(
     title="Order Book Data API",
     description="High-frequency streaming data and minute rollups for digital assets.",
@@ -25,14 +21,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Dependency to inject a database connection into our routes
 async def get_db():
     async with app.state.pool.acquire() as conn:
         yield conn
 
+# Serve the HTML Dashboard on root "/"
+@app.get("/", include_in_schema=False)
+async def serve_dashboard():
+    return FileResponse("index.html")
+
 @app.get("/api/assets", tags=["Metadata"])
 async def get_assets(conn: asyncpg.Connection = Depends(get_db)):
-    """Retrieves the list of supported trading pairs."""
     records = await conn.fetch("SELECT * FROM assets;")
     return {"assets": [dict(record) for record in records]}
 
@@ -42,7 +41,6 @@ async def get_latest_metrics(
     limit: int = Query(10, le=100, description="Number of microsecond updates to fetch"),
     conn: asyncpg.Connection = Depends(get_db)
 ):
-    """Retrieves the most recent raw tick data for a specific asset."""
     records = await conn.fetch("""
         SELECT timestamp, best_bid, best_ask, spread, mid_price, micro_price, imbalance 
         FROM order_book_metrics 
@@ -62,7 +60,6 @@ async def get_historical_metrics(
     limit: int = Query(60, le=1440, description="Number of minute-candles to fetch"),
     conn: asyncpg.Connection = Depends(get_db)
 ):
-    """Retrieves 1-minute aggregated rollups for charting and trend analysis."""
     records = await conn.fetch("""
         SELECT minute_bucket, avg_spread, avg_micro_price, avg_imbalance, tick_count
         FROM minute_rollups 
