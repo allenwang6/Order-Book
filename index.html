@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Order Book Pipeline Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -31,23 +32,32 @@
                     <p class="text-xs text-slate-400 mt-1">Real-time WebSocket Ingestion & Microstructure Metrics</p>
                 </div>
                 
-                <div class="flex items-center space-x-3">
-                    <label for="assetSelect" class="text-sm font-medium text-slate-300">Select Asset:</label>
-                    <select id="assetSelect" onchange="fetchData()" class="bg-slate-900 border border-bordercolor text-slate-200 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 outline-none">
-                        <option value="BTC/USD">BTC/USD</option>
-                        <option value="ETH/USD">ETH/USD</option>
-                        <option value="SOL/USD">SOL/USD</option>
-                        <option value="AVAX/USD">AVAX/USD</option>
-                    </select>
+                <div class="flex items-center space-x-6">
+                    <!-- SYSTEM HEALTH MONITOR -->
+                    <div class="flex items-center space-x-2 bg-slate-900 border border-bordercolor px-3 py-1.5 rounded-lg shadow-inner">
+                        <span class="flex h-2.5 w-2.5 relative">
+                          <span id="healthPing" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span id="healthDot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        <span id="latencyText" class="text-xs font-mono text-slate-300 w-12">-- ms</span>
+                    </div>
+
+                    <!-- ASSET SELECTOR -->
+                    <div class="flex items-center space-x-2">
+                        <label for="assetSelect" class="text-sm font-medium text-slate-300">Select Asset:</label>
+                        <select id="assetSelect" onchange="initializeWebSocket()" class="bg-slate-900 border border-bordercolor text-slate-200 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 outline-none">
+                            <option value="BTC/USD">BTC/USD</option>
+                            <option value="ETH/USD">ETH/USD</option>
+                            <option value="SOL/USD">SOL/USD</option>
+                            <option value="AVAX/USD">AVAX/USD</option>
+                        </select>
+                    </div>
                 </div>
             </div>
             
             <!-- Navigation Bar -->
             <nav class="bg-slate-900/50 border-t border-bordercolor px-6 py-3 flex space-x-6 text-sm">
-                <!-- ACTIVE TAB -->
                 <a href="/" class="text-blue-400 font-semibold border-b-2 border-blue-400 pb-1">Live Feed</a>
-                
-                <!-- INACTIVE TABS -->
                 <a href="/charts" class="text-slate-400 hover:text-slate-200 transition-colors pb-1">Historical Charts (1m Rollups)</a>
                 <a href="https://github.com/allenwang6/Order-Book" target="_blank" class="text-slate-400 hover:text-slate-200 transition-colors pb-1 flex items-center gap-1">
                     Source Code
@@ -58,112 +68,290 @@
 
         <!-- Real-Time Metrics Cards -->
         <section class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div class="bg-cardbg p-5 rounded-xl border border-bordercolor">
-                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Mid Price</span>
-                <div id="midPrice" class="text-2xl font-extrabold text-blue-400 mt-2">--</div>
+            <div class="bg-cardbg p-5 rounded-xl border border-bordercolor shadow-lg">
+                <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Mid Price</span>
+                <div id="midPrice" class="text-2xl font-extrabold text-blue-400 mt-2 transition-colors duration-200">--</div>
             </div>
 
-            <div class="bg-cardbg p-5 rounded-xl border border-bordercolor">
-                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Micro Price</span>
-                <div id="microPrice" class="text-2xl font-extrabold text-purple-400 mt-2">--</div>
+            <div class="bg-cardbg p-5 rounded-xl border border-bordercolor shadow-lg">
+                <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Micro Price</span>
+                <div id="microPrice" class="text-2xl font-extrabold text-purple-400 mt-2 transition-colors duration-200">--</div>
             </div>
 
-            <div class="bg-cardbg p-5 rounded-xl border border-bordercolor">
-                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Bid-Ask Spread</span>
-                <div id="spread" class="text-2xl font-extrabold text-emerald-400 mt-2">--</div>
+            <div class="bg-cardbg p-5 rounded-xl border border-bordercolor shadow-lg">
+                <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Bid-Ask Spread</span>
+                <div id="spread" class="text-2xl font-extrabold text-emerald-400 mt-2 transition-colors duration-200">--</div>
             </div>
 
-            <div class="bg-cardbg p-5 rounded-xl border border-bordercolor">
-                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Imbalance (OBI)</span>
-                <div id="imbalance" class="text-2xl font-extrabold text-amber-400 mt-2">--</div>
+            <div class="bg-cardbg p-5 rounded-xl border border-bordercolor shadow-lg">
+                <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Imbalance (OBI)</span>
+                <div id="imbalance" class="text-2xl font-extrabold text-amber-400 mt-2 transition-colors duration-200">--</div>
             </div>
         </section>
 
-        <!-- Live Feed Table -->
-        <section class="bg-cardbg rounded-xl border border-bordercolor overflow-hidden shadow-lg">
-            <div class="p-4 border-b border-bordercolor flex justify-between items-center">
-                <h2 class="text-base font-semibold text-slate-200">Recent High-Frequency Ticks</h2>
-                <span class="flex h-2.5 w-2.5 relative">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                </span>
-            </div>
+        <!-- Middle Section: Depth Chart (Placeholder) & Tick Table -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left text-slate-300">
-                    <thead class="text-xs uppercase bg-slate-900/60 text-slate-400 border-b border-bordercolor">
-                        <tr>
-                            <th class="px-6 py-3">Timestamp</th>
-                            <th class="px-6 py-3">Best Bid</th>
-                            <th class="px-6 py-3">Best Ask</th>
-                            <th class="px-6 py-3">Spread</th>
-                            <th class="px-6 py-3">Micro Price</th>
-                            <th class="px-6 py-3">OBI</th>
-                        </tr>
-                    </thead>
-                    <tbody id="ticksTableBody">
-                        <!-- Ticks populated dynamically -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
+            <!-- Future Depth Chart Container -->
+            <section class="bg-cardbg rounded-xl border border-bordercolor overflow-hidden shadow-lg p-4 flex flex-col">
+                <div class="border-b border-bordercolor pb-3 mb-4">
+                    <h2 class="text-base font-semibold text-slate-200">Market Depth Profile</h2>
+                    <p class="text-[10px] text-slate-400 mt-1">Requires L2 array ingestion upgrade in tracker.py</p>
+                </div>
+                <div class="relative flex-grow w-full h-[300px]">
+                    <canvas id="depthChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Live Tick Feed Table -->
+            <section class="bg-cardbg rounded-xl border border-bordercolor overflow-hidden shadow-lg h-[400px] flex flex-col">
+                <div class="p-4 border-b border-bordercolor flex justify-between items-center bg-slate-900/30">
+                    <h2 class="text-base font-semibold text-slate-200">Live Tick Feed</h2>
+                </div>
+                
+                <div class="overflow-y-auto flex-grow">
+                    <table class="w-full text-sm text-left text-slate-300">
+                        <thead class="text-[10px] uppercase bg-slate-900/80 text-slate-400 sticky top-0 border-b border-bordercolor backdrop-blur-sm">
+                            <tr>
+                                <th class="px-4 py-3">Time</th>
+                                <th class="px-4 py-3">Bid</th>
+                                <th class="px-4 py-3">Ask</th>
+                                <th class="px-4 py-3">Spread</th>
+                                <th class="px-4 py-3">OBI</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ticksTableBody">
+                            <!-- Populated by WebSocket -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
     </div>
 
     <script>
+        let ws = null;
+        let depthChart = null;
+        const MAX_ROWS = 15;
+
         // Run immediately when page loads
         document.addEventListener("DOMContentLoaded", () => {
             const savedAsset = localStorage.getItem('selectedAsset');
             if (savedAsset) {
                 document.getElementById('assetSelect').value = savedAsset;
             }
-            fetchData();
-            setInterval(fetchData, 1000);
+            // Fetch initial 15 rows to populate the table, then open the WebSocket
+            fetchInitialData().then(initializeWebSocket);
         });
 
-        async function fetchData() {
-            const selectEl = document.getElementById('assetSelect');
-            const symbol = selectEl.value;
-            
-            // Save the selection to Local Storage
-            localStorage.setItem('selectedAsset', symbol);
-
+        async function fetchInitialData() {
+            const symbol = document.getElementById('assetSelect').value;
             try {
-                const response = await fetch(`/api/metrics/latest?symbol=${encodeURIComponent(symbol)}&limit=15`);
+                const response = await fetch(`/api/metrics/latest?symbol=${encodeURIComponent(symbol)}&limit=${MAX_ROWS}`);
                 const result = await response.json();
                 
-                if (!result.data || result.data.length === 0) return;
-
-                const latest = result.data[0];
-
-                document.getElementById('midPrice').innerText = `$${parseFloat(latest.mid_price).toFixed(2)}`;
-                document.getElementById('microPrice').innerText = `$${parseFloat(latest.micro_price).toFixed(2)}`;
-                document.getElementById('spread').innerText = `$${parseFloat(latest.spread).toFixed(4)}`;
-                
-                const obiVal = parseFloat(latest.imbalance);
-                const obiElem = document.getElementById('imbalance');
-                obiElem.innerText = `${obiVal >= 0 ? '+' : ''}${obiVal.toFixed(3)}`;
-                obiElem.className = `text-2xl font-extrabold mt-2 ${obiVal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
-
-                const tbody = document.getElementById('ticksTableBody');
-                tbody.innerHTML = '';
-                
-                result.data.forEach(row => {
-                    const time = new Date(row.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
-                    const tr = document.createElement('tr');
-                    tr.className = 'border-b border-bordercolor/50 hover:bg-slate-800/40 transition-colors';
-                    tr.innerHTML = `
-                        <td class="px-6 py-3 font-mono text-xs text-slate-400">${time}</td>
-                        <td class="px-6 py-3 text-emerald-400 font-mono">$${parseFloat(row.best_bid).toFixed(2)}</td>
-                        <td class="px-6 py-3 text-rose-400 font-mono">$${parseFloat(row.best_ask).toFixed(2)}</td>
-                        <td class="px-6 py-3 font-mono">$${parseFloat(row.spread).toFixed(2)}</td>
-                        <td class="px-6 py-3 font-mono text-purple-300">$${parseFloat(row.micro_price).toFixed(2)}</td>
-                        <td class="px-6 py-3 font-mono ${parseFloat(row.imbalance) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${parseFloat(row.imbalance) >= 0 ? '+' : ''}${parseFloat(row.imbalance).toFixed(3)}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                if (result.data) {
+                    document.getElementById('ticksTableBody').innerHTML = '';
+                    result.data.forEach(row => prependRowToTable(row));
+                    
+                    // Render the chart immediately using the freshest row
+                    const latest = result.data[0];
+                    if (latest && latest.bids && latest.asks) {
+                        const bidsArray = typeof latest.bids === 'string' ? JSON.parse(latest.bids) : latest.bids;
+                        const asksArray = typeof latest.asks === 'string' ? JSON.parse(latest.asks) : latest.asks;
+                        renderDepthChart(bidsArray, asksArray);
+                    }
+                }
             } catch (err) {
-                console.error("Failed to fetch dashboard metrics:", err);
+                console.error("Initial fetch failed:", err);
             }
+        }
+
+        function initializeWebSocket() {
+            const symbol = document.getElementById('assetSelect').value;
+            localStorage.setItem('selectedAsset', symbol);
+
+            if (ws) {
+                ws.close();
+            }
+
+            const encodedSymbol = encodeURIComponent(symbol);
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws/stream/${encodedSymbol}`);
+
+            ws.onmessage = (event) => {
+                const latest = JSON.parse(event.data);
+                
+                let tsStr = latest.timestamp;
+                if (!tsStr.endsWith('Z') && !tsStr.includes('+') && !tsStr.includes('-')) {
+                    tsStr += 'Z';
+                }
+                
+                const dbTime = new Date(tsStr).getTime();
+                const browserTime = Date.now();
+                const latency = Math.abs(browserTime - dbTime);
+                
+                updateHealthMonitor(latency);
+                updateStatCards(latest);
+                prependRowToTable(latest);
+
+                // TRIGGER THE CHART UPDATE
+                if (latest.bids && latest.asks) {
+                    const bidsArray = typeof latest.bids === 'string' ? JSON.parse(latest.bids) : latest.bids;
+                    const asksArray = typeof latest.asks === 'string' ? JSON.parse(latest.asks) : latest.asks;
+                    renderDepthChart(bidsArray, asksArray);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error("WebSocket Error:", error);
+                updateHealthMonitor(99999);
+            };
+
+            ws.onclose = () => {
+                updateHealthMonitor(99999);
+            };
+        }
+
+        function updateHealthMonitor(latency) {
+            const latText = document.getElementById('latencyText');
+            const healthDot = document.getElementById('healthDot');
+            const healthPing = document.getElementById('healthPing');
+
+            if (isNaN(latency) || latency > 5000) {
+                latText.innerText = `ERR`;
+                latText.className = "text-xs font-bold text-rose-400 w-12";
+                healthDot.className = "relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500";
+                healthPing.classList.add('hidden');
+            } else {
+                latText.innerText = `${latency}ms`;
+                latText.className = "text-xs font-mono text-emerald-400 w-12";
+                healthDot.className = "relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500";
+                healthPing.classList.remove('hidden');
+            }
+        }
+
+        function updateStatCards(data) {
+            document.getElementById('midPrice').innerText = `$${parseFloat(data.mid_price).toFixed(2)}`;
+            document.getElementById('microPrice').innerText = `$${parseFloat(data.micro_price).toFixed(2)}`;
+            document.getElementById('spread').innerText = `$${parseFloat(data.spread).toFixed(4)}`;
+            
+            const obiVal = parseFloat(data.imbalance);
+            const obiElem = document.getElementById('imbalance');
+            obiElem.innerText = `${obiVal >= 0 ? '+' : ''}${obiVal.toFixed(3)}`;
+            
+            if (obiVal >= 0) {
+                obiElem.className = "text-2xl font-extrabold mt-2 transition-colors duration-200 text-emerald-400";
+            } else {
+                obiElem.className = "text-2xl font-extrabold mt-2 transition-colors duration-200 text-rose-400";
+            }
+        }
+
+        function prependRowToTable(row) {
+            const tbody = document.getElementById('ticksTableBody');
+            
+            let tsStr = row.timestamp;
+            if (!tsStr.endsWith('Z') && !tsStr.includes('+') && !tsStr.includes('-')) {
+                tsStr += 'Z';
+            }
+            
+            const time = new Date(tsStr).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+            
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-bordercolor/50 hover:bg-slate-800/40 transition-colors animate-pulse';
+            
+            setTimeout(() => tr.classList.remove('animate-pulse'), 300);
+
+            tr.innerHTML = `
+                <td class="px-4 py-2 font-mono text-xs text-slate-400">${time}</td>
+                <td class="px-4 py-2 text-emerald-400 font-mono text-xs">$${parseFloat(row.best_bid).toFixed(2)}</td>
+                <td class="px-4 py-2 text-rose-400 font-mono text-xs">$${parseFloat(row.best_ask).toFixed(2)}</td>
+                <td class="px-4 py-2 font-mono text-xs text-slate-200">$${parseFloat(row.spread).toFixed(4)}</td>
+                <td class="px-4 py-2 font-mono text-xs ${parseFloat(row.imbalance) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                    ${parseFloat(row.imbalance) >= 0 ? '+' : ''}${parseFloat(row.imbalance).toFixed(3)}
+                </td>
+            `;
+            
+            tbody.insertBefore(tr, tbody.firstChild);
+
+            if (tbody.children.length > MAX_ROWS) {
+                tbody.removeChild(tbody.lastChild);
+            }
+        }
+
+        function renderDepthChart(bids, asks) {
+            const ctx = document.getElementById('depthChart').getContext('2d');
+            
+            if (!bids || !asks || bids.length === 0 || asks.length === 0) return;
+
+            // Map and sort bids (price descending)
+            const sortedBids = [...bids].sort((a, b) => b[0] - a[0]);
+            let bidVol = 0;
+            const bidData = sortedBids.map(b => {
+                bidVol += b[1];
+                return { x: parseFloat(b[0]), y: bidVol };
+            }).reverse();
+
+            // Map and sort asks (price ascending)
+            const sortedAsks = [...asks].sort((a, b) => a[0] - b[0]);
+            let askVol = 0;
+            const askData = sortedAsks.map(a => {
+                askVol += a[1];
+                return { x: parseFloat(a[0]), y: askVol };
+            });
+
+            if (depthChart) {
+                depthChart.data.datasets[0].data = bidData;
+                depthChart.data.datasets[1].data = askData;
+                depthChart.update('none');
+                return;
+            }
+
+            depthChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Bids',
+                            data: bidData,
+                            borderColor: '#34d399',
+                            backgroundColor: 'rgba(52, 211, 153, 0.2)',
+                            stepped: true,
+                            fill: true,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Asks',
+                            data: askData,
+                            borderColor: '#fb7185',
+                            backgroundColor: 'rgba(251, 113, 133, 0.2)',
+                            stepped: true,
+                            fill: true,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    scales: {
+                        x: { 
+                            type: 'linear', 
+                            ticks: { 
+                                color: '#94a3b8',
+                                callback: function(value) { return value.toFixed(2); }
+                            }, 
+                            grid: { color: '#334155' } 
+                        },
+                        y: { 
+                            ticks: { color: '#94a3b8' }, 
+                            grid: { color: '#334155' }, 
+                            position: 'right' 
+                        }
+                    }
+                }
+            });
         }
     </script>
 </body>
