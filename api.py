@@ -45,6 +45,26 @@ async def serve_dashboard():
 async def serve_charts():
     return FileResponse("charts.html")
 
+@app.get("/api/rollups")
+async def get_rollups(symbol: str = Query(...)):
+    """Fetches full 1-minute aggregated rollups for charts, tables, and summary cards."""
+    async with app.state.pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT 
+                minute_bucket, 
+                avg_micro_price, 
+                price_volatility, 
+                max_spread, 
+                max_imbalance, 
+                min_imbalance, 
+                avg_imbalance 
+            FROM minute_rollups 
+            WHERE symbol = $1 
+            ORDER BY minute_bucket ASC 
+            LIMIT 60;
+        """, symbol)
+        return [dict(row) for row in rows]
+    
 # --- WEBSOCKET STREAMING ROUTE ---
 
 @app.websocket("/ws/stream/{symbol:path}")

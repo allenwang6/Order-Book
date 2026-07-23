@@ -107,9 +107,11 @@
 
         document.addEventListener("DOMContentLoaded", () => {
             const savedAsset = localStorage.getItem('selectedAsset');
-            if (savedAsset) document.getElementById('assetSelect').value = savedAsset;
+            if (savedAsset) {
+                document.getElementById('assetSelect').value = savedAsset;
+            }
             fetchChartData();
-            setInterval(fetchChartData, 60000);
+            setInterval(fetchChartData, 5000); // Polls every 5 seconds with smooth updates
         });
 
         async function fetchChartData() {
@@ -117,70 +119,112 @@
             localStorage.setItem('selectedAsset', symbol);
 
             try {
-                const response = await fetch(`/api/metrics/historical?symbol=${encodeURIComponent(symbol)}&limit=60`);
-                const result = await response.json();
-                if (!result.data || result.data.length === 0) return;
+                const response = await fetch(`/api/rollups?symbol=${encodeURIComponent(symbol)}`);
+                const data = await response.json();
 
-                const maxVol = Math.max(...result.data.map(r => parseFloat(r.price_volatility)));
-                const maxSpread = Math.max(...result.data.map(r => parseFloat(r.max_spread)));
-                const maxObi = Math.max(...result.data.map(r => parseFloat(r.max_imbalance)));
-                const minObi = Math.min(...result.data.map(r => parseFloat(r.min_imbalance)));
+                if (!data || data.length === 0) return;
 
-                document.getElementById('statVol').innerText = `$${maxVol.toFixed(2)}`;
-                document.getElementById('statSpread').innerText = `$${maxSpread.toFixed(2)}`;
-                document.getElementById('statMaxObi').innerText = `+${maxObi.toFixed(3)}`;
-                document.getElementById('statMinObi').innerText = `${minObi.toFixed(3)}`;
+                // 1. Chart Data Extraction & Rendering
+                const labels = data.map(row => new Date(row.minute_bucket).toLocaleTimeString());
+                const microPrices = data.map(row => row.avg_micro_price);
+                const imbalances = data.map(row => row.avg_imbalance);
+                renderChart(labels, microPrices, imbalances);
 
+                // 2. 1-Hour Summary Cards Calculation & Injection
+                const maxVol = Math.max(...data.map(d => parseFloat(d.price_volatility) || 0));
+                const maxSpread = Math.max(...data.map(d => parseFloat(d.max_spread) || 0));
+                const maxBuy = Math.max(...data.map(d => parseFloat(d.max_imbalance) || 0));
+                const maxSell = Math.min(...data.map(d => parseFloat(d.min_imbalance) || 0));
+
+                document.getElementById('statVol').textContent = maxVol.toFixed(4);
+                document.getElementById('statSpread').textContent = maxSpread.toFixed(4);
+                document.getElementById('statMaxObi').textContent = maxBuy.toFixed(4);
+                document.getElementById('statMinObi').textContent = maxSell.toFixed(4);
+
+                // 3. Per-Minute Breakdown Table Population
                 const tbody = document.getElementById('rollupsTableBody');
                 tbody.innerHTML = '';
-                result.data.forEach(row => {
-                    const time = new Date(row.minute_bucket).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+                const reversed = [...data].reverse();
+
+                reversed.forEach(row => {
                     const tr = document.createElement('tr');
-                    tr.className = 'border-b border-bordercolor/50 hover:bg-slate-800/40 transition-colors';
+                    tr.className = "border-b border-bordercolor hover:bg-slate-800/40 transition-colors";
                     tr.innerHTML = `
-                        <td class="px-6 py-3 font-mono text-xs text-slate-400">${time}</td>
-                        <td class="px-6 py-3 font-mono text-purple-300">$${parseFloat(row.avg_micro_price).toFixed(2)}</td>
-                        <td class="px-6 py-3 font-mono text-blue-400">$${parseFloat(row.price_volatility).toFixed(2)}</td>
-                        <td class="px-6 py-3 font-mono text-emerald-400">$${parseFloat(row.max_spread).toFixed(2)}</td>
-                        <td class="px-6 py-3 font-mono text-emerald-400">+${parseFloat(row.max_imbalance).toFixed(3)}</td>
-                        <td class="px-6 py-3 font-mono text-rose-400">${parseFloat(row.min_imbalance).toFixed(3)}</td>
+                        <td class="px-6 py-3 font-medium text-slate-200">${new Date(row.minute_bucket).toLocaleTimeString()}</td>
+                        <td class="px-6 py-3 text-purple-300">$${parseFloat(row.avg_micro_price).toFixed(2)}</td>
+                        <td class="px-6 py-3 text-blue-400">${parseFloat(row.price_volatility).toFixed(4)}</td>
+                        <td class="px-6 py-3 text-emerald-400">${parseFloat(row.max_spread).toFixed(4)}</td>
+                        <td class="px-6 py-3 text-emerald-400">${parseFloat(row.max_imbalance).toFixed(4)}</td>
+                        <td class="px-6 py-3 text-rose-400">${parseFloat(row.min_imbalance).toFixed(4)}</td>
                     `;
                     tbody.appendChild(tr);
                 });
 
-                const chartData = [...result.data].reverse();
-                renderChart(
-                    chartData.map(row => new Date(row.minute_bucket).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
-                    chartData.map(row => parseFloat(row.avg_micro_price)),
-                    chartData.map(row => parseFloat(row.avg_imbalance))
-                );
             } catch (err) {
-                console.error("Failed to fetch historical data:", err);
+                console.error("Error fetching historical rollup data:", err);
             }
         }
 
         function renderChart(labels, microPrices, imbalances) {
             const ctx = document.getElementById('historicalChart').getContext('2d');
-            if (mainChart) mainChart.destroy();
+            
+            const barColors = imbalances.map(val => val >= 0 ? 'rgba(52, 211, 153, 0.6)' : 'rgba(251, 113, 133, 0.6)');
+
+            if (mainChart) {
+                mainChart.data.labels = labels;
+                mainChart.data.datasets[0].data = microPrices;
+                mainChart.data.datasets[1].data = imbalances;
+                mainChart.data.datasets[1].backgroundColor = barColors;
+                mainChart.update(); // Smoothly animates changes in-place
+                return;
+            }
 
             mainChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [
-                        { label: 'Avg Micro Price ($)', data: microPrices, borderColor: '#c084fc', backgroundColor: 'rgba(192, 132, 252, 0.1)', borderWidth: 2, pointRadius: 1, yAxisID: 'y', tension: 0.2, fill: true },
-                        { label: 'Avg OBI', data: imbalances, type: 'bar', backgroundColor: imbalances.map(val => val >= 0 ? 'rgba(52, 211, 153, 0.6)' : 'rgba(251, 113, 133, 0.6)'), yAxisID: 'y1' }
+                        { 
+                            label: 'Avg Micro Price ($)', 
+                            data: microPrices, 
+                            borderColor: '#c084fc', 
+                            backgroundColor: 'rgba(192, 132, 252, 0.1)', 
+                            borderWidth: 2, 
+                            pointRadius: 1, 
+                            yAxisID: 'y', 
+                            tension: 0.2, 
+                            fill: true 
+                        },
+                        { 
+                            label: 'Avg OBI', 
+                            data: imbalances, 
+                            type: 'bar', 
+                            backgroundColor: barColors, 
+                            yAxisID: 'y1' 
+                        }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: {
+                        duration: 600,
+                        easing: 'easeOutQuart'
+                    },
                     interaction: { mode: 'index', intersect: false },
                     plugins: { legend: { labels: { color: '#cbd5e1' } } },
                     scales: {
                         x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-                        y: { type: 'linear', display: true, position: 'left', ticks: { color: '#c084fc' }, grid: { color: '#334155' }, title: { display: true, text: 'Price ($)', color: '#94a3b8' } },
-                        y1: { type: 'linear', display: true, position: 'right', ticks: { color: '#94a3b8' }, grid: { drawOnChartArea: false }, title: { display: true, text: 'Order Book Imbalance (-1 to 1)', color: '#94a3b8' } }
+                        y: {
+                            type: 'linear', display: true, position: 'left',
+                            ticks: { color: '#c084fc' }, grid: { color: '#334155' },
+                            title: { display: true, text: 'Price ($)', color: '#94a3b8' }
+                        },
+                        y1: {
+                            type: 'linear', display: true, position: 'right',
+                            ticks: { color: '#94a3b8' }, grid: { drawOnChartArea: false },
+                            title: { display: true, text: 'Order Book Imbalance (-1 to 1)', color: '#94a3b8' }
+                        }
                     }
                 }
             });
