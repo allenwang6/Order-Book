@@ -60,10 +60,10 @@ async def get_rollups(symbol: str = Query(...)):
                 avg_imbalance 
             FROM minute_rollups 
             WHERE symbol = $1 
-            ORDER BY minute_bucket ASC 
+            ORDER BY minute_bucket DESC 
             LIMIT 60;
         """, symbol)
-        return [dict(row) for row in rows]
+        return [dict(row) for row in reversed(rows)]
     
 # --- WEBSOCKET STREAMING ROUTE ---
 
