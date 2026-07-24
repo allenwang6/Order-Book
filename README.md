@@ -4,13 +4,14 @@ An asynchronous market data pipeline that ingests real-time cryptocurrency order
 # system details
 The system uses CCXT to maintain WebSocket connections to Coinbase. It parses raw L2 depth arrays to calculate volume-weighted micro-price and order book imbalance (OBI) in real-time. 
 
-These metrics are inserted into a PostgreSQL database. Background workers handle 1-minute data rollups natively within the database to prevent clock drift and automatically prune old raw ticks to manage storage. A FastAPI backend streams the live ticks via WebSockets and serves the historical rollups to the frontend UI.
+These metrics are inserted into a PostgreSQL database. Background workers handle 1-minute data rollups natively within the database to prevent clock drift and automatically prune old raw ticks to manage storage. A FastAPI backend streams the live ticks via WebSockets and serves the historical rollups to the frontend UI. Container log rotation is configured to ensure the pipeline can run continuously without exhausting host disk space.
 
 # setup environment
-The easiest way to run the project is using Docker. Create a `.env` file in the project root directory:
+The easiest way to run the project is using Docker. First, copy the example environment file to create your local configuration:
 ```
-DB_URL=postgresql://admin:secretpassword@db:5432/orderbook
+cp .env.example .env
 ```
+This `.env` file is ignored by Git and provides Docker with the default local database credentials.
 
 # running the program
 ```
