@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # 1. The Local PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: orderbook-db
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_DB: orderbook
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d orderbook"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. The Ingestion Engine (tracker.py)
+  tracker:
+    build: .
+    container_name: orderbook-tracker
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # This overrides your local .env to point to the docker database
+      - DB_URL=postgresql://admin:secretpassword@db:5432/orderbook
+    command: python tracker.py
+
+  # 3. The FastAPI Server
+  api:
+    build: .
+    container_name: orderbook-api
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # This overrides your local .env to point to the docker database
+      - DB_URL=postgresql://admin:secretpassword@db:5432/orderbook
+    ports:
+      - "8000:8000"
+    command: uvicorn api:app --host 0.0.0.0 --port 8000
+
+volumes:
+  # Ensures your database data survives even if you stop the containers
+  postgres_data:
