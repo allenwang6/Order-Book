@@ -1,0 +1,21 @@
+# Secrets — .gitignore does not apply to the Docker build context.
+# Without this, COPY . . bakes live database credentials into every image layer.
+.env
+
+# Local virtualenv (built for the host OS, useless and huge inside the image)
+.venv/
+
+# Version control history
+.git/
+.gitignore
+.gitattributes
+
+# Python and tooling caches
+__pycache__/
+*.pyc
+.mypy_cache/
+
+# Docs and compose config are not needed at runtime
+README.md
+docker-compose.yml
+.dockerignore
