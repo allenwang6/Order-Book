@@ -122,6 +122,10 @@
                 const response = await fetch(`/api/rollups?symbol=${encodeURIComponent(symbol)}`);
                 const data = await response.json();
 
+                // The 5s poll and an onchange fetch can be in flight together; discard a
+                // response whose asset is no longer the one selected.
+                if (document.getElementById('assetSelect').value !== symbol) return;
+
                 if (!data || data.length === 0) return;
 
                 // 1. Chart Data Extraction & Rendering
