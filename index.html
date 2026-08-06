@@ -29,7 +29,7 @@
             <div class="p-6 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
                     <h1 class="text-2xl font-bold text-white tracking-wide">L2 Order Book Dashboard</h1>
-                    <p class="text-xs text-slate-400 mt-1">Real-time WebSocket Ingestion & 20-Level Depth Profile</p>
+                    <p class="text-xs text-slate-400 mt-1">Real-time WebSocket Ingestion & 10-Level Depth Profile</p>
                 </div>
                 
                 <div class="flex items-center space-x-6">
@@ -45,7 +45,7 @@
                     <!-- Asset Selector -->
                     <div class="flex items-center space-x-2">
                         <label for="assetSelect" class="text-sm font-medium text-slate-300">Asset:</label>
-                        <select id="assetSelect" onchange="initializeWebSocket()" class="bg-slate-900 border border-bordercolor text-slate-200 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 outline-none">
+                        <select id="assetSelect" onchange="switchAsset()" class="bg-slate-900 border border-bordercolor text-slate-200 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 outline-none">
                             <option value="BTC/USD">BTC/USD</option>
                             <option value="ETH/USD">ETH/USD</option>
                             <option value="SOL/USD">SOL/USD</option>
