@@ -134,6 +134,34 @@
             fetchInitialData().then(initializeWebSocket);
         });
 
+        // Appends a UTC designator only when the timestamp genuinely lacks one. Testing for
+        // '-' would always match the ISO date separators and never fire.
+        function parseTimestamp(ts) {
+            const tsStr = String(ts);
+            const hasTimezone = /(?:[Zz]|[+-]\d{2}:?\d{2})$/.test(tsStr);
+            return new Date(hasTimezone ? tsStr : `${tsStr}Z`);
+        }
+
+        // Clears every panel before reconnecting, so one asset's data can never be shown
+        // under another's while the new feed warms up.
+        function switchAsset() {
+            document.getElementById('ticksTableBody').innerHTML = '';
+            ['midPrice', 'microPrice', 'spread'].forEach(id => {
+                document.getElementById(id).innerText = '--';
+            });
+            const obiElem = document.getElementById('imbalance');
+            obiElem.innerText = '--';
+            obiElem.className = 'text-2xl font-extrabold text-amber-400 mt-2';
+
+            if (depthChart) {
+                depthChart.data.datasets[0].data = [];
+                depthChart.data.datasets[1].data = [];
+                depthChart.update('none');
+            }
+
+            fetchInitialData().then(initializeWebSocket);
+        }
+
         async function fetchInitialData() {
             const symbol = document.getElementById('assetSelect').value;
             try {
@@ -141,7 +169,9 @@
                 const result = await response.json();
                 if (result.data) {
                     document.getElementById('ticksTableBody').innerHTML = '';
-                    result.data.forEach(row => prependRowToTable(row));
+                    // The API returns newest-first, and each row is prepended, so feed it
+                    // oldest-first to end up with the newest at the top.
+                    [...result.data].reverse().forEach(row => prependRowToTable(row));
                     const latest = result.data[0];
                     if (latest && latest.bids && latest.asks) {
                         renderDepthChart(
@@ -165,10 +195,7 @@
 
             ws.onmessage = (event) => {
                 const latest = JSON.parse(event.data);
-                let tsStr = latest.timestamp;
-                if (!tsStr.endsWith('Z') && !tsStr.includes('+') && !tsStr.includes('-')) tsStr += 'Z';
-                
-                const latency = Math.abs(Date.now() - new Date(tsStr).getTime());
+                const latency = Math.abs(Date.now() - parseTimestamp(latest.timestamp).getTime());
                 updateHealthMonitor(latency);
                 updateStatCards(latest);
                 prependRowToTable(latest);
@@ -216,10 +243,7 @@
 
         function prependRowToTable(row) {
             const tbody = document.getElementById('ticksTableBody');
-            let tsStr = row.timestamp;
-            if (!tsStr.endsWith('Z') && !tsStr.includes('+') && !tsStr.includes('-')) tsStr += 'Z';
-            
-            const time = new Date(tsStr).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+            const time = parseTimestamp(row.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
             const tr = document.createElement('tr');
             tr.className = 'border-b border-bordercolor/50 hover:bg-slate-800/40 transition-colors animate-pulse';
             setTimeout(() => tr.classList.remove('animate-pulse'), 300);
