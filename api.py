@@ -190,13 +190,17 @@ async def websocket_stream(websocket: WebSocket, symbol: str):
     watcher = asyncio.create_task(_await_disconnect(websocket))
 
     try:
-        _, pending = await asyncio.wait(
+        done, pending = await asyncio.wait(
             {forwarder, watcher}, return_when=asyncio.FIRST_COMPLETED
         )
         for task in pending:
             task.cancel()
-    except WebSocketDisconnect:
-        pass
+        # Consume results so a send failing on an already-closed socket does not
+        # surface as an unretrieved task exception.
+        for task in done:
+            exc = task.exception()
+            if exc is not None and not isinstance(exc, WebSocketDisconnect):
+                logger.warning(f"WebSocket stream error [{symbol}]: {exc}")
     finally:
         subscribers = websocket.app.state.subscribers
         subscribers[symbol].discard(queue)
