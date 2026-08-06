@@ -6,18 +6,14 @@ The system uses CCXT to maintain WebSocket connections to Coinbase. It parses ra
 
 These metrics are inserted into a PostgreSQL database. Background workers handle 1-minute data rollups natively within the database to prevent clock drift and automatically prune old raw ticks to manage storage. A FastAPI backend streams the live ticks via WebSockets and serves the historical rollups to the frontend UI. Container log rotation is configured to ensure the pipeline can run continuously without exhausting host disk space.
 
-# setup environment
-The easiest way to run the project is using Docker. First, copy the example environment file to create your local configuration:
-```
-cp .env.example .env
-```
-This `.env` file is ignored by Git and provides Docker with the default local database credentials.
-
 # running the program
+The easiest way to run the project is using Docker. No configuration is required:
 ```
 docker compose up --build
 ```
-Running this command will start the PostgreSQL database, launch the data ingestion tracker, and host the web dashboard on http://localhost:8000. 
+Running this command will start the PostgreSQL database, launch the data ingestion tracker, and host the web dashboard on http://localhost:8000.
+
+Compose runs its own PostgreSQL container and passes the connection string to the services directly, so no `.env` file is needed for this path. To change the database password, set `POSTGRES_PASSWORD` in a `.env` file or in your shell before running `docker compose up` — it is applied consistently to the database and both services. The database port is published on `127.0.0.1` only, so it is reachable from your machine for `psql` but not from the network.
 
 Because the historical 1-minute rollup chart requires live depth data that cannot be fetched retroactively, the chart will be empty on the first run. The database will populate naturally as the program runs. The data is stored in a persistent Docker volume and will remain saved across future restarts.
 
@@ -29,7 +25,11 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-You will need a running PostgreSQL database. Update the `.env` file with your specific database URL, then run the backend and the ingestion engine concurrently:
+You will need a running PostgreSQL database. This is where `.env` matters — it supplies `DB_URL` when the services are run directly rather than under Compose:
+```
+cp .env.example .env
+```
+Edit `.env` with your database URL (it is ignored by Git and excluded from the Docker build context), then run the backend and the ingestion engine concurrently:
 
 ```
 python tracker.py
