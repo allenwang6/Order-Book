@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 1. The Local PostgreSQL Database
   db:
@@ -8,10 +6,12 @@ services:
     restart: always
     environment:
       POSTGRES_USER: admin
-      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secretpassword}
       POSTGRES_DB: orderbook
     ports:
-      - "5432:5432"
+      # Bound to loopback: the app reaches the database over the internal compose
+      # network, so this mapping exists only for local psql access.
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -28,14 +28,18 @@ services:
   # 2. The Ingestion Engine (tracker.py)
   tracker:
     build: .
+    # Shared tag so the identical build context is only built once per `up --build`
+    image: orderbook-app:local
     container_name: orderbook-tracker
     restart: always
     depends_on:
       db:
         condition: service_healthy
     environment:
-      # This overrides your local .env to point to the docker database
-      - DB_URL=postgresql://admin:secretpassword@db:5432/orderbook
+      # Always the internal compose database. DB_URL from .env is deliberately NOT
+      # read here, so a .env pointing at a cloud database cannot silently redirect
+      # the containers. Override the password with POSTGRES_PASSWORD instead.
+      - DB_URL=postgresql://admin:${POSTGRES_PASSWORD:-secretpassword}@db:5432/orderbook
     command: python tracker.py
     logging:
       driver: "json-file"
@@ -46,14 +50,14 @@ services:
   # 3. The FastAPI Server
   api:
     build: .
+    image: orderbook-app:local
     container_name: orderbook-api
     restart: always
     depends_on:
       db:
         condition: service_healthy
     environment:
-      # This overrides your local .env to point to the docker database
-      - DB_URL=postgresql://admin:secretpassword@db:5432/orderbook
+      - DB_URL=postgresql://admin:${POSTGRES_PASSWORD:-secretpassword}@db:5432/orderbook
     ports:
       - "8000:8000"
     command: uvicorn api:app --host 0.0.0.0 --port 8000
